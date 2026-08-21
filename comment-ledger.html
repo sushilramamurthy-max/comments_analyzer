@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Comment Ledger — Reduce production comments over time</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  :root{
+    --ink-900:#10161d; --ink-800:#161e27; --ink-700:#1d2732; --ink-600:#2a3743;
+    --paper:#eef1f0; --paper-dim:#aab4bd; --paper-faint:#6f7c88;
+    --red:#c9463c; --red-soft:rgba(201,70,60,.14);
+    --gold:#c69a4e; --gold-soft:rgba(198,154,78,.16);
+    --sage:#7fa892; --sage-soft:rgba(127,168,146,.16);
+    --blue:#7f9ec9; --blue-soft:rgba(127,158,201,.16);
+    --serif: Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', serif;
+    --mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;background:var(--ink-900);color:var(--paper);font-family:var(--mono);}
+  body{background-image:radial-gradient(ellipse 900px 500px at 15% -10%, rgba(198,154,78,.08), transparent 60%),
+      radial-gradient(ellipse 700px 500px at 100% 5%, rgba(201,70,60,.06), transparent 55%);}
+  ::selection{background:var(--red);color:var(--paper);}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 28px 100px;}
+  a{color:var(--gold);}
+
+  header.hero{padding:56px 0 32px;border-bottom:1px solid var(--ink-600);}
+  .eyebrow{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--red);display:flex;align-items:center;gap:10px;margin-bottom:16px;}
+  .eyebrow::before{content:"";width:22px;height:1px;background:var(--red);display:inline-block;}
+  h1{font-family:var(--serif);font-weight:400;font-size:clamp(30px,4.4vw,46px);line-height:1.1;margin:0 0 14px;max-width:760px;letter-spacing:-.01em;}
+  h1 em{font-style:italic;color:var(--gold);}
+  .dek{font-family:var(--serif);font-size:16.5px;line-height:1.6;color:var(--paper-dim);max-width:620px;margin:0 0 30px;}
+  .dek b{color:var(--paper);font-weight:600;}
+
+  /* ---------- UPLOAD ---------- */
+  .dropzone{
+    border:1.5px dashed var(--ink-600);background:var(--ink-800);padding:34px 24px;text-align:center;
+    cursor:pointer;transition:border-color .15s, background .15s;
+  }
+  .dropzone:hover, .dropzone.drag{border-color:var(--gold);background:var(--ink-700);}
+  .dropzone .dz-icon{font-family:var(--serif);font-size:26px;color:var(--gold);margin-bottom:8px;}
+  .dropzone .dz-main{font-size:13.5px;color:var(--paper);margin-bottom:4px;}
+  .dropzone .dz-sub{font-size:11px;color:var(--paper-faint);}
+  #fileInput{display:none;}
+
+  .status-line{display:flex;align-items:center;gap:10px;font-size:11.5px;color:var(--paper-faint);margin-top:14px;flex-wrap:wrap;}
+  .status-line .dot{width:6px;height:6px;border-radius:50%;background:var(--sage);display:inline-block;}
+  .progress-wrap{margin-top:12px;display:none;}
+  .progress-wrap.show{display:block;}
+  .progress-track{height:6px;background:var(--ink-600);border-radius:3px;overflow:hidden;}
+  .progress-fill{height:100%;background:var(--gold);width:0%;transition:width .2s;}
+  .progress-label{font-size:10.5px;color:var(--paper-faint);margin-top:6px;}
+  .banner{padding:10px 14px;font-size:12px;border:1px solid var(--red-soft);background:var(--red-soft);color:var(--red);margin-top:14px;display:none;}
+  .banner.show{display:block;}
+
+  /* ---------- SECTION SCAFFOLD ---------- */
+  section{padding:44px 0;border-bottom:1px solid var(--ink-600);}
+  section:last-of-type{border-bottom:none;}
+  .section-label{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--paper-faint);margin-bottom:6px;}
+  .section-title{font-family:var(--serif);font-size:24px;color:var(--paper);margin:0 0 6px;}
+  .section-note{font-size:12px;color:var(--paper-faint);margin-bottom:22px;max-width:640px;line-height:1.6;}
+  .empty-note{font-size:12.5px;color:var(--paper-faint);font-style:italic;padding:18px 0;}
+
+  /* ---------- NORTH STAR ---------- */
+  .northstar{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--ink-600);border:1px solid var(--ink-600);}
+  .ns-stat{background:var(--ink-900);padding:18px 18px;}
+  .ns-stat .n{font-family:var(--serif);font-size:30px;line-height:1;color:var(--paper);}
+  .ns-stat .n.good{color:var(--sage);} .ns-stat .n.bad{color:var(--red);}
+  .ns-stat .l{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--paper-faint);margin-top:8px;}
+  .ns-stat .delta{font-size:11px;margin-top:6px;}
+  .delta.down{color:var(--sage);} .delta.up{color:var(--red);} .delta.flat{color:var(--paper-faint);}
+
+  /* ---------- PANELS ---------- */
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:24px;}
+  @media(max-width:860px){.grid2{grid-template-columns:1fr;}}
+  .panel{border:1px solid var(--ink-600);background:var(--ink-800);padding:22px;}
+  .panel h4{font-family:var(--serif);font-weight:400;font-size:17px;margin:0 0 2px;color:var(--paper);}
+  .panel .role-count{font-size:11px;color:var(--paper-faint);margin-bottom:16px;}
+  .bucket-split{display:flex;height:10px;border-radius:3px;overflow:hidden;margin-bottom:6px;}
+  .bucket-split div{height:100%;}
+  .bucket-legend{display:flex;gap:14px;font-size:10.5px;color:var(--paper-faint);margin-bottom:18px;}
+  .bucket-legend .chip{display:flex;align-items:center;gap:5px;}
+  .chip .dot{width:7px;height:7px;border-radius:50%;}
+
+  .theme-row{padding:12px 0;border-top:1px solid var(--ink-700);}
+  .theme-row:first-of-type{border-top:none;}
+  .theme-row .t-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;}
+  .theme-row .t-name{font-size:13px;color:var(--paper);}
+  .theme-row .t-count{font-size:12px;color:var(--gold);font-family:var(--mono);white-space:nowrap;}
+  .theme-row .t-action{font-size:11.5px;color:var(--paper-dim);line-height:1.55;margin-top:4px;font-family:var(--serif);}
+  .theme-row .t-action.na{color:var(--paper-faint);font-style:italic;font-family:var(--mono);}
+  .subhead{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--paper-faint);margin:18px 0 4px;}
+  .subhead:first-child{margin-top:0;}
+
+  /* ---------- TREND ---------- */
+  .chart-box{position:relative;height:220px;}
+
+  /* ---------- BACKLOG TABLE ---------- */
+  table.backlog{width:100%;border-collapse:collapse;font-size:12px;}
+  table.backlog th{text-align:left;font-size:9.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--paper-faint);
+    padding:8px 10px;border-bottom:1px solid var(--ink-600);font-weight:400;}
+  table.backlog td{padding:10px;border-bottom:1px solid var(--ink-700);color:var(--paper-dim);vertical-align:top;}
+  table.backlog tr:hover td{background:rgba(255,255,255,.02);}
+  .b-theme{color:var(--paper);font-size:12.5px;}
+  .b-action{font-size:11px;color:var(--paper-faint);font-family:var(--serif);line-height:1.5;max-width:260px;}
+  .badge{display:inline-block;font-size:9.5px;padding:2px 8px;border-radius:20px;letter-spacing:.03em;text-transform:uppercase;}
+  .badge.product{background:var(--gold-soft);color:var(--gold);}
+  .badge.content{background:var(--blue-soft);color:var(--blue);}
+  .badge.unclassified{background:rgba(255,255,255,.06);color:var(--paper-faint);}
+  .spark{display:flex;align-items:flex-end;gap:2px;height:22px;}
+  .spark div{width:5px;background:var(--ink-600);border-radius:1px;}
+  .spark div.cur{background:var(--gold);}
+  .delta-cell.down{color:var(--sage);} .delta-cell.up{color:var(--red);} .delta-cell.flat{color:var(--paper-faint);}
+  select.status-select{
+    background:var(--ink-900);border:1px solid var(--ink-600);color:var(--paper-dim);font-family:var(--mono);
+    font-size:10.5px;padding:4px 6px;border-radius:2px;outline:none;
+  }
+  select.status-select:focus{border-color:var(--gold);}
+
+  /* ---------- EXPLORER ---------- */
+  .explorer-controls{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px;}
+  .explorer-controls select, .explorer-controls input{
+    background:var(--ink-800);border:1px solid var(--ink-600);color:var(--paper);font-family:var(--mono);
+    font-size:12px;padding:9px 12px;border-radius:2px;outline:none;
+  }
+  .explorer-controls input{flex:1;min-width:200px;}
+  .result-count{font-size:11px;color:var(--paper-faint);margin-bottom:14px;}
+  .comment-card{border:1px solid var(--ink-600);border-left:2px solid var(--ink-600);background:var(--ink-800);padding:13px 16px;margin-bottom:8px;}
+  .comment-card.au{border-left-color:var(--sage);} .comment-card.ed{border-left-color:var(--red);} .comment-card.mc{border-left-color:var(--gold);}
+  .cc-meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:6px;font-size:10px;color:var(--paper-faint);}
+  .cc-meta .jid{color:var(--paper-dim);font-weight:600;}
+  .cc-text{font-size:12.5px;line-height:1.55;color:var(--paper-dim);white-space:pre-wrap;font-family:var(--serif);}
+  .load-more{display:block;margin:18px auto 0;background:transparent;border:1px solid var(--ink-600);color:var(--paper-dim);
+    font-size:11px;letter-spacing:.06em;text-transform:uppercase;padding:9px 22px;cursor:pointer;}
+  .load-more:hover{border-color:var(--gold);color:var(--gold);}
+
+  footer{padding:30px 0 10px;font-size:11px;color:var(--paper-faint);line-height:1.75;}
+  footer button.reset{background:none;border:none;color:var(--paper-faint);text-decoration:underline;cursor:pointer;font-family:var(--mono);font-size:11px;padding:0;}
+  footer button.reset:hover{color:var(--red);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <div class="eyebrow">Comment Ledger</div>
+    <h1>Turn margin notes into a <em>backlog you can burn down</em>.</h1>
+    <p class="dek">Upload a comment export whenever you have one. Every comment gets sorted into <b>product</b> (the tool made someone type this by hand) or <b>content</b> (a genuine editorial correction), with a suggested fix. Classifications are cached, so re-uploads only cost time on what's new — and you watch the product-related count over time.</p>
+
+    <div class="dropzone" id="dropzone">
+      <div class="dz-icon">⎘</div>
+      <div class="dz-main">Drop a comments CSV here, or click to choose a file</div>
+      <div class="dz-sub">Expects columns like jid, aid, role_code, category, comment_text — headers are matched flexibly</div>
+      <input type="file" id="fileInput" accept=".csv">
+    </div>
+    <div class="status-line" id="statusLine" style="display:none;"><span class="dot"></span><span id="statusText"></span></div>
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-label" id="progressLabel"></div>
+    </div>
+    <div class="banner" id="errorBanner"></div>
+  </header>
+
+  <section id="northstarSection" style="display:none;">
+    <div class="section-label">This period vs last</div>
+    <div class="section-title">The number you're trying to shrink</div>
+    <div class="northstar" id="northstarRow"></div>
+  </section>
+
+  <section id="trendSection" style="display:none;">
+    <div class="section-label">Over time</div>
+    <div class="section-title">Comment volume across uploads</div>
+    <div class="section-note">Every snapshot you save adds a point here. The goal: the gold line (product-related comments) trends down as fixes ship.</div>
+    <div class="panel"><div class="chart-box"><canvas id="trendChart"></canvas></div></div>
+  </section>
+
+  <section id="roleSection" style="display:none;">
+    <div class="section-label">By source</div>
+    <div class="section-title">Author / Editor vs. Mastercopier</div>
+    <div class="section-note">Same split, two audiences — author &amp; editor comments are what reaches the product first; mastercopier comments are the manual workarounds happening downstream.</div>
+    <div class="grid2">
+      <div class="panel" id="auedPanel"></div>
+      <div class="panel" id="mcPanel"></div>
+    </div>
+  </section>
+
+  <section id="backlogSection" style="display:none;">
+    <div class="section-label">Prioritized</div>
+    <div class="section-title">The backlog</div>
+    <div class="section-note">Ranked by volume × severity. Set a status as you work through it — the sparkline shows whether a theme is actually shrinking after you ship something.</div>
+    <div class="panel">
+      <table class="backlog">
+        <thead><tr><th>Theme</th><th>Bucket</th><th>Latest</th><th>Δ</th><th>Trend</th><th>Status</th><th>Suggested action</th></tr></thead>
+        <tbody id="backlogBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="explorerSection" style="display:none;">
+    <div class="section-label">Explorer</div>
+    <div class="section-title">Browse this upload's comments</div>
+    <div class="explorer-controls">
+      <input type="text" id="searchBox" placeholder="Search comment text…">
+      <select id="roleFilter"><option value="">All roles</option><option value="au">Author</option><option value="ed">Editor</option><option value="mc">Mastercopier</option></select>
+      <select id="bucketFilter"><option value="">All buckets</option><option value="product">Product</option><option value="content">Content</option><option value="unclassified">Unclassified</option></select>
+    </div>
+    <div class="result-count" id="resultCount"></div>
+    <div id="cardContainer"></div>
+    <button class="load-more" id="loadMoreBtn">Show more ↓</button>
+  </section>
+
+  <section id="emptyState">
+    <div class="empty-note">No comments analyzed yet. Drop a CSV above to run your first snapshot — the dashboard below will fill in and stay here for next time, whether you're back tomorrow or next quarter.</div>
+  </section>
+
+  <footer>
+    <p><b>How this works.</b> Comments are grouped by normalized text (numbers collapsed) + role, so the same instruction recurring across articles is classified once. Classification runs live via Claude, capped at 300 new unique patterns per upload for speed — anything beyond that is counted in totals under "Unclassified / long tail" and gets priority next time if it keeps recurring. Everything is stored locally to your account, not shared. <button class="reset" id="resetBtn">Reset all stored data</button></p>
+  </footer>
+
+</div>
+
+<script>
+/* ============================== CONFIG ============================== */
+const CLASSIFY_BUDGET = 300;
+const BATCH_SIZE = 10;
+const CACHE_MAX_ENTRIES = 6000;
+
+const SYSTEM_PROMPT = `You triage comments left on manuscript proofs in a scholarly publishing production workflow, written by authors, editors, or production staff called "mastercopiers". For EACH comment in the numbered list, classify it and respond with ONLY a JSON array (no markdown fences, no prose before or after), one object per comment in the same order:
+
+{"theme": "2-4 word category, reuse consistent labels across similar comments (e.g. 'Section renumbering', 'Figure replacement', 'Reference formatting', 'Keyword addition', 'XML tagging', 'Equation numbering')", "bucket": "product" or "content", "sentiment": "positive" or "neutral" or "negative", "action": "one short concrete sentence for a product team on what to build/fix so this stops needing a manual comment, or 'n/a' if bucket is content", "severity": integer 1-5 for how much manual effort/friction this represents}
+
+Definitions:
+- "product": this comment exists because the person can't do this themselves in the tool — a missing self-service action, formatting control, tagging automation, or workflow gap. The fix is something engineering could build.
+- "content": a genuine correction to the manuscript's substance — wording, data, references, typos, missing keywords — that a human would always need to specify by hand regardless of tooling.
+
+Be decisive. Most comments are one or the other; use "content" only when no realistic product feature would remove the need for a human to type this.`;
+
+/* ============================== STATE ============================== */
+let cache = {};           // hashKey -> {theme,bucket,sentiment,action,severity}
+let backlogStatus = {};   // theme -> {status, updatedAt}
+let snapshots = [];       // chronological array of snapshot objects
+let currentGroups = [];   // this session's uploaded groups (with classification attached)
+let filteredCards = [];
+let cardsShown = 0;
+const CARD_PAGE = 30;
+
+/* ============================== UTIL ============================== */
+function fmt(n){ return (n||0).toLocaleString('en-US'); }
+function normText(t){
+  return String(t).toLowerCase().replace(/["'\u201c\u201d]/g,'').replace(/\d+([.:]\d+)?/g,'#')
+    .replace(/[^a-z#\s]/g,' ').replace(/\s+/g,' ').trim();
+}
+function djb2(str){
+  let h = 5381;
+  for(let i=0;i<str.length;i++){ h = ((h<<5)+h+str.charCodeAt(i))|0; }
+  return (h>>>0).toString(36);
+}
+function normRole(r){
+  r = String(r||'').trim().toLowerCase();
+  if(/^au/.test(r)) return 'au';
+  if(/^ed/.test(r)) return 'ed';
+  if(/^mc/.test(r)) return 'mc';
+  return 'other';
+}
+function todayIso(){ return new Date().toISOString(); }
+function shortDate(iso){ return new Date(iso).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'}); }
+
+/* ============================== STORAGE ============================== */
+async function loadCache(){
+  try{ const r = await window.storage.get('classification-cache', false); cache = r ? JSON.parse(r.value) : {}; }
+  catch(e){ cache = {}; }
+}
+async function saveCache(){
+  const keys = Object.keys(cache);
+  if(keys.length > CACHE_MAX_ENTRIES){
+    const drop = keys.slice(0, keys.length - CACHE_MAX_ENTRIES);
+    drop.forEach(k=>delete cache[k]);
+  }
+  try{ await window.storage.set('classification-cache', JSON.stringify(cache), false); }catch(e){ console.error('cache save failed', e); }
+}
+async function loadBacklogStatus(){
+  try{ const r = await window.storage.get('backlog-status', false); backlogStatus = r ? JSON.parse(r.value) : {}; }
+  catch(e){ backlogStatus = {}; }
+}
+async function saveBacklogStatus(){
+  try{ await window.storage.set('backlog-status', JSON.stringify(backlogStatus), false); }catch(e){ console.error('status save failed', e); }
+}
+async function loadSnapshots(){
+  snapshots = [];
+  try{
+    const listRes = await window.storage.list('snapshot:', false);
+    const keys = (listRes && listRes.keys) || [];
+    for(const k of keys){
+      try{ const r = await window.storage.get(k, false); if(r) snapshots.push(JSON.parse(r.value)); }
+      catch(e){ /* skip unreadable */ }
+    }
+  }catch(e){ /* no snapshots yet */ }
+  snapshots.sort((a,b)=> new Date(a.date) - new Date(b.date));
+}
+async function saveSnapshot(snap){
+  const key = 'snapshot:' + snap.date;
+  await window.storage.set(key, JSON.stringify(snap), false);
+}
+
+/* ============================== CSV PARSING ============================== */
+function findCol(fields, patterns){
+  for(const f of fields){ for(const p of patterns){ if(p.test(f)) return f; } }
+  return null;
+}
+function parseFile(file){
+  return new Promise((resolve, reject)=>{
+    Papa.parse(file, {
+      header:true, skipEmptyLines:true,
+      complete: (results)=> resolve(results),
+      error: (err)=> reject(err)
+    });
+  });
+}
+function mapRows(results){
+  const fields = results.meta.fields || [];
+  const colJid = findCol(fields, [/^jid$/i, /journal/i]);
+  const colAid = findCol(fields, [/^aid$/i, /article/i]);
+  const colRole = findCol(fields, [/role/i]);
+  const colCat = findCol(fields, [/categ/i]);
+  const colText = findCol(fields, [/comment.*text/i, /^comment$/i, /^text$/i, /note/i]);
+  if(!colRole || !colText) return {error:'Could not find role and comment-text columns. Expected headers like jid, aid, role_code, category, comment_text.'};
+  const rows = results.data.map(r=>({
+    jid: colJid ? String(r[colJid]||'').trim() : '',
+    aid: colAid ? String(r[colAid]||'').trim() : '',
+    role: normRole(r[colRole]),
+    category: colCat ? (String(r[colCat]||'').trim().toLowerCase() || 'uncategorized') : 'uncategorized',
+    text: String(r[colText]||'').trim()
+  })).filter(r=>r.text);
+  return {rows: rows};
+}
+function groupRows(rows){
+  const map = new Map();
+  for(const r of rows){
+    const nt = normText(r.text);
+    if(!nt) continue;
+    const key = r.role + '|' + r.category + '|' + djb2(nt);
+    if(!map.has(key)){
+      map.set(key, {hashKey:key, role:r.role, category:r.category, text:r.text.slice(0,2000), count:0, articles:new Set()});
+    }
+    const g = map.get(key);
+    g.count++;
+    if(r.aid) g.articles.add(r.aid);
+  }
+  return Array.from(map.values());
+}
+
+/* ============================== CLASSIFICATION ============================== */
+async function classifyBatch(items){
+  const listStr = items.map((it,i)=>`${i+1}. [role=${it.role}] ${it.text.slice(0,300).replace(/\s+/g,' ')}`).join('\n');
+  try{
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        model:'claude-sonnet-4-6',
+        max_tokens:1000,
+        system: SYSTEM_PROMPT,
+        messages:[{role:'user', content: listStr}]
+      })
+    });
+    const data = await resp.json();
+    const textBlocks = (data.content||[]).filter(c=>c.type==='text').map(c=>c.text).join('\n');
+    const clean = textBlocks.replace(/```json|```/g,'').trim();
+    const arr = JSON.parse(clean);
+    if(!Array.isArray(arr) || arr.length !== items.length) throw new Error('shape mismatch');
+    return arr.map(o=>({
+      theme: (o.theme || 'Unclassified').toString().trim().slice(0,40),
+      bucket: ['product','content'].includes(o.bucket) ? o.bucket : 'unclassified',
+      sentiment: ['positive','neutral','negative'].includes(o.sentiment) ? o.sentiment : 'neutral',
+      action: (o.action || '').toString().trim().slice(0,220),
+      severity: Number.isFinite(+o.severity) ? Math.max(1, Math.min(5, Math.round(+o.severity))) : 3
+    }));
+  }catch(e){
+    console.error('classification batch failed', e);
+    return items.map(()=>({theme:'Unclassified / long tail', bucket:'unclassified', sentiment:'neutral', action:'', severity:0}));
+  }
+}
+
+async function classifyNewGroups(groups, onProgress){
+  const uncached = groups.filter(g=>!cache[g.hashKey]).sort((a,b)=>b.count-a.count);
+  const toClassify = uncached.slice(0, CLASSIFY_BUDGET);
+  const longTail = uncached.slice(CLASSIFY_BUDGET);
+  const totalBatches = Math.ceil(toClassify.length / BATCH_SIZE);
+  for(let i=0;i<toClassify.length;i+=BATCH_SIZE){
+    const batch = toClassify.slice(i, i+BATCH_SIZE);
+    const results = await classifyBatch(batch);
+    batch.forEach((g,idx)=>{ cache[g.hashKey] = results[idx]; });
+    if(onProgress) onProgress(Math.floor(i/BATCH_SIZE)+1, totalBatches);
+    await new Promise(r=>setTimeout(r, 150));
+  }
+  longTail.forEach(g=>{ /* left unclassified this round, counted as long tail */ });
+  return {classifiedCount: toClassify.length, longTailCount: longTail.length};
+}
+
+/* ============================== SNAPSHOT BUILD ============================== */
+function buildSnapshot(groups, filename, classifiedCount, longTailCount){
+  const snap = {
+    date: todayIso(), filename: filename,
+    total: 0,
+    role_counts: {au:0, ed:0, mc:0, other:0},
+    bucket_counts: {product:0, content:0, unclassified:0},
+    au_sentiment_counts: {positive:0, neutral:0, negative:0},
+    theme_stats: {},
+    classified_new: classifiedCount, long_tail: longTailCount
+  };
+  for(const g of groups){
+    const cls = cache[g.hashKey] || {theme:'Unclassified / long tail', bucket:'unclassified', sentiment:'neutral', action:'', severity:0};
+    snap.total += g.count;
+    snap.role_counts[g.role] = (snap.role_counts[g.role]||0) + g.count;
+    snap.bucket_counts[cls.bucket] = (snap.bucket_counts[cls.bucket]||0) + g.count;
+    if((g.role==='au' || g.role==='ed')){
+      snap.au_sentiment_counts[cls.sentiment] = (snap.au_sentiment_counts[cls.sentiment]||0) + g.count;
+    }
+    const t = cls.theme || 'Unclassified / long tail';
+    if(!snap.theme_stats[t]) snap.theme_stats[t] = {count:0, au:0, ed:0, mc:0, other:0, bucket:cls.bucket, action:cls.action, sev_sum:0, sev_n:0};
+    const ts = snap.theme_stats[t];
+    ts.count += g.count;
+    ts[g.role] = (ts[g.role]||0) + g.count;
+    if(cls.action && cls.action !== 'n/a') ts.action = cls.action;
+    if(cls.severity){ ts.sev_sum += cls.severity * g.count; ts.sev_n += g.count; }
+  }
+  return snap;
+}
+
+/* ============================== FILE HANDLING ============================== */
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const statusLine = document.getElementById('statusLine');
+const statusText = document.getElementById('statusText');
+const progressWrap = document.getElementById('progressWrap');
+const progressFill = document.getElementById('progressFill');
+const progressLabel = document.getElementById('progressLabel');
+const errorBanner = document.getElementById('errorBanner');
+
+dropzone.addEventListener('click', ()=>fileInput.click());
+dropzone.addEventListener('dragover', e=>{ e.preventDefault(); dropzone.classList.add('drag'); });
+dropzone.addEventListener('dragleave', ()=> dropzone.classList.remove('drag'));
+dropzone.addEventListener('drop', e=>{
+  e.preventDefault(); dropzone.classList.remove('drag');
+  if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e=>{ if(e.target.files.length) handleFile(e.target.files[0]); });
+
+function setStatus(msg){ statusLine.style.display='flex'; statusText.textContent = msg; }
+function showError(msg){ errorBanner.textContent = msg; errorBanner.classList.add('show'); }
+function hideError(){ errorBanner.classList.remove('show'); }
+
+async function handleFile(file){
+  hideError();
+  progressWrap.classList.remove('show');
+  setStatus('Reading ' + file.name + '…');
+  let results;
+  try{ results = await parseFile(file); }
+  catch(e){ showError('Could not read that file as CSV.'); return; }
+
+  const mapped = mapRows(results);
+  if(mapped.error){ showError(mapped.error); return; }
+  if(!mapped.rows.length){ showError('No comment rows found in that file.'); return; }
+
+  setStatus('Grouping ' + fmt(mapped.rows.length) + ' comments into patterns…');
+  const groups = groupRows(mapped.rows);
+
+  const newCount = groups.filter(g=>!cache[g.hashKey]).length;
+  const toClassifyCount = Math.min(newCount, CLASSIFY_BUDGET);
+  if(toClassifyCount > 0){
+    progressWrap.classList.add('show');
+    setStatus('Classifying with AI — new patterns only, cached ones are instant…');
+    const totalBatches = Math.ceil(toClassifyCount / BATCH_SIZE);
+    await classifyNewGroupsWrapped(groups, totalBatches);
+  } else {
+    setStatus('All patterns already classified from cache — no AI calls needed.');
+    lastClassifyResult = {classifiedCount:0, longTailCount:0};
+  }
+  progressWrap.classList.remove('show');
+
+  await saveCache();
+
+  setStatus('Saving snapshot…');
+  const {classifiedCount, longTailCount} = lastClassifyResult;
+  const snap = buildSnapshot(groups, file.name, classifiedCount, longTailCount);
+  await saveSnapshot(snap);
+  snapshots.push(snap);
+  snapshots.sort((a,b)=> new Date(a.date) - new Date(b.date));
+
+  currentGroups = groups.map(g=>({...g, classification: cache[g.hashKey] || {theme:'Unclassified / long tail', bucket:'unclassified', sentiment:'neutral', action:'', severity:0}}));
+
+  setStatus('Done — analyzed ' + fmt(snap.total) + ' comments from ' + file.name + ' on ' + shortDate(snap.date) + '.');
+  renderAll();
+}
+
+let lastClassifyResult = {classifiedCount:0, longTailCount:0};
+async function classifyNewGroupsWrapped(groups, totalBatches){
+  let done = 0;
+  lastClassifyResult = await classifyNewGroups(groups, (batchNum, total)=>{
+    done = batchNum;
+    const pct = total ? Math.round(100*batchNum/total) : 100;
+    progressFill.style.width = pct + '%';
+    progressLabel.textContent = 'Batch ' + batchNum + ' of ' + total;
+  });
+}
+
+/* ============================== RENDER ============================== */
+function renderAll(){
+  const latest = snapshots[snapshots.length-1];
+  if(!latest) return;
+  document.getElementById('emptyState').style.display = 'none';
+  renderNorthstar();
+  renderTrend();
+  renderRolePanels(latest);
+  renderBacklog();
+  renderExplorer();
+}
+
+function renderNorthstar(){
+  const sec = document.getElementById('northstarSection');
+  const latest = snapshots[snapshots.length-1];
+  const prev = snapshots.length>1 ? snapshots[snapshots.length-2] : null;
+  sec.style.display = 'block';
+  function deltaHtml(cur, prevVal){
+    if(prevVal===null || prevVal===undefined) return '<span class="delta flat">first snapshot</span>';
+    if(prevVal===0) return '<span class="delta flat">—</span>';
+    const pct = Math.round(100*(cur-prevVal)/prevVal);
+    if(pct===0) return '<span class="delta flat">flat vs last</span>';
+    const cls = pct<0 ? 'down':'up';
+    const arrow = pct<0 ? '▼':'▲';
+    return `<span class="delta ${cls}">${arrow} ${Math.abs(pct)}% vs last</span>`;
+  }
+  const productCur = latest.bucket_counts.product||0;
+  const productPrev = prev ? (prev.bucket_counts.product||0) : null;
+  const totalCur = latest.total;
+  const totalPrev = prev ? prev.total : null;
+  const stats = [
+    {n: fmt(productCur), cls: prev && productCur<productPrev ? 'good' : (prev && productCur>productPrev ? 'bad':''), l:'Product-related comments', delta: deltaHtml(productCur, productPrev)},
+    {n: fmt(totalCur), cls:'', l:'Total comments this upload', delta: deltaHtml(totalCur, totalPrev)},
+    {n: fmt(latest.bucket_counts.content||0), cls:'', l:'Content / editorial comments', delta: deltaHtml(latest.bucket_counts.content||0, prev?(prev.bucket_counts.content||0):null)},
+    {n: fmt(latest.long_tail||0), cls:'', l:'Long-tail patterns not yet classified', delta:''},
+  ];
+  document.getElementById('northstarRow').innerHTML = stats.map(s=>`
+    <div class="ns-stat"><div class="n ${s.cls}">${s.n}</div><div class="l">${s.l}</div>${s.delta?'<div class="delta-wrap">'+s.delta+'</div>':''}</div>
+  `).join('');
+}
+
+let trendChartInstance = null;
+function renderTrend(){
+  const sec = document.getElementById('trendSection');
+  if(snapshots.length < 1){ sec.style.display='none'; return; }
+  sec.style.display = 'block';
+  const labels = snapshots.map(s=>shortDate(s.date));
+  const totals = snapshots.map(s=>s.total);
+  const products = snapshots.map(s=>s.bucket_counts.product||0);
+  if(trendChartInstance) trendChartInstance.destroy();
+  trendChartInstance = new Chart(document.getElementById('trendChart'), {
+    type:'line',
+    data:{labels, datasets:[
+      {label:'Total comments', data:totals, borderColor:'#7f9ec9', backgroundColor:'rgba(127,158,201,.08)', tension:.3, fill:true},
+      {label:'Product-related', data:products, borderColor:'#c69a4e', backgroundColor:'rgba(198,154,78,.12)', tension:.3, fill:true},
+    ]},
+    options:{
+      plugins:{legend:{position:'bottom', labels:{color:'#aab4bd', font:{size:10}, boxWidth:10}}},
+      scales:{
+        x:{ticks:{color:'#6f7c88', font:{size:10}}, grid:{color:'#1d2732'}},
+        y:{ticks:{color:'#6f7c88', font:{size:10}}, grid:{color:'#1d2732'}, beginAtZero:true}
+      }
+    }
+  });
+}
+
+function topThemesForRole(themeStats, roleKeys, bucket, n){
+  return Object.entries(themeStats)
+    .filter(([name, ts])=> ts.bucket===bucket && roleKeys.reduce((s,r)=>s+(ts[r]||0),0) > 0 && name!=='Unclassified / long tail')
+    .map(([name, ts])=>({name, count: roleKeys.reduce((s,r)=>s+(ts[r]||0),0), action: ts.action}))
+    .sort((a,b)=>b.count-a.count).slice(0,n);
+}
+
+function renderRolePanels(latest){
+  document.getElementById('roleSection').style.display = 'block';
+  const auedCount = (latest.role_counts.au||0) + (latest.role_counts.ed||0);
+  const mcCount = latest.role_counts.mc||0;
+
+  renderOnePanel('auedPanel', 'Author & Editor', auedCount, ['au','ed'], latest);
+  renderOnePanel('mcPanel', 'Mastercopier', mcCount, ['mc'], latest);
+}
+
+function renderOnePanel(elId, title, totalCount, roleKeys, latest){
+  const productThemes = topThemesForRole(latest.theme_stats, roleKeys, 'product', 5);
+  const contentThemes = topThemesForRole(latest.theme_stats, roleKeys, 'content', 5);
+  const bucketTotals = {product:0, content:0, unclassified:0};
+  Object.values(latest.theme_stats).forEach(ts=>{
+    const c = roleKeys.reduce((s,r)=>s+(ts[r]||0),0);
+    bucketTotals[ts.bucket] = (bucketTotals[ts.bucket]||0) + c;
+  });
+  const tot = Math.max(1, bucketTotals.product+bucketTotals.content+bucketTotals.unclassified);
+  const el = document.getElementById(elId);
+  el.innerHTML = `
+    <h4>${title}</h4>
+    <div class="role-count">${fmt(totalCount)} comments this upload</div>
+    <div class="bucket-split">
+      <div style="width:${100*bucketTotals.product/tot}%;background:var(--gold)"></div>
+      <div style="width:${100*bucketTotals.content/tot}%;background:var(--blue)"></div>
+      <div style="width:${100*bucketTotals.unclassified/tot}%;background:var(--ink-600)"></div>
+    </div>
+    <div class="bucket-legend">
+      <span class="chip"><span class="dot" style="background:var(--gold)"></span>Product ${Math.round(100*bucketTotals.product/tot)}%</span>
+      <span class="chip"><span class="dot" style="background:var(--blue)"></span>Content ${Math.round(100*bucketTotals.content/tot)}%</span>
+      <span class="chip"><span class="dot" style="background:var(--ink-600)"></span>Unclassified ${Math.round(100*bucketTotals.unclassified/tot)}%</span>
+    </div>
+    <div class="subhead">Top product opportunities</div>
+    ${productThemes.length ? productThemes.map(t=>`
+      <div class="theme-row"><div class="t-head"><span class="t-name">${t.name}</span><span class="t-count">${fmt(t.count)}</span></div>
+      <div class="t-action">${t.action && t.action!=='n/a' ? t.action : 'No suggested action yet.'}</div></div>
+    `).join('') : '<div class="empty-note" style="padding:6px 0;">None identified yet.</div>'}
+    <div class="subhead">Top content / editorial themes</div>
+    ${contentThemes.length ? contentThemes.map(t=>`
+      <div class="theme-row"><div class="t-head"><span class="t-name">${t.name}</span><span class="t-count">${fmt(t.count)}</span></div>
+      <div class="t-action na">Editorial correction — no product action needed.</div></div>
+    `).join('') : '<div class="empty-note" style="padding:6px 0;">None identified yet.</div>'}
+  `;
+}
+
+function renderBacklog(){
+  document.getElementById('backlogSection').style.display = 'block';
+  const latest = snapshots[snapshots.length-1];
+  const prev = snapshots.length>1 ? snapshots[snapshots.length-2] : null;
+  const allThemeNames = new Set();
+  snapshots.forEach(s=>Object.keys(s.theme_stats).forEach(t=>allThemeNames.add(t)));
+  allThemeNames.delete('Unclassified / long tail');
+
+  const rows = Array.from(allThemeNames).map(name=>{
+    const latestTs = latest.theme_stats[name];
+    if(!latestTs) return null; // only show themes present in latest snapshot
+    const prevCount = prev && prev.theme_stats[name] ? prev.theme_stats[name].count : null;
+    const history = snapshots.map(s=> s.theme_stats[name] ? s.theme_stats[name].count : 0);
+    const sevAvg = latestTs.sev_n ? (latestTs.sev_sum/latestTs.sev_n) : 3;
+    return {
+      name, bucket: latestTs.bucket, count: latestTs.count, action: latestTs.action,
+      prevCount, history, priority: latestTs.count * sevAvg
+    };
+  }).filter(Boolean).sort((a,b)=>b.priority-a.priority);
+
+  const maxHist = Math.max(1, ...rows.flatMap(r=>r.history));
+  document.getElementById('backlogBody').innerHTML = rows.map(r=>{
+    const status = (backlogStatus[r.name] && backlogStatus[r.name].status) || 'New';
+    let deltaCell = '<span class="delta-cell flat">—</span>';
+    if(r.prevCount!==null){
+      const diff = r.count - r.prevCount;
+      if(diff===0) deltaCell = '<span class="delta-cell flat">flat</span>';
+      else { const cls = diff<0?'down':'up'; const arrow = diff<0?'▼':'▲'; deltaCell = `<span class="delta-cell ${cls}">${arrow}${Math.abs(diff)}</span>`; }
+    }
+    const sparkBars = r.history.slice(-8).map((v,i,arr)=>{
+      const h = Math.max(2, Math.round(20*v/maxHist));
+      const isLast = i===arr.length-1;
+      return `<div class="${isLast?'cur':''}" style="height:${h}px;"></div>`;
+    }).join('');
+    return `<tr>
+      <td class="b-theme">${r.name}</td>
+      <td><span class="badge ${r.bucket}">${r.bucket}</span></td>
+      <td>${fmt(r.count)}</td>
+      <td>${deltaCell}</td>
+      <td><div class="spark">${sparkBars}</div></td>
+      <td><select class="status-select" data-theme="${encodeURIComponent(r.name)}">
+        ${['New','Investigating','Planned','Shipped'].map(s=>`<option value="${s}" ${s===status?'selected':''}>${s}</option>`).join('')}
+      </select></td>
+      <td class="b-action">${r.action && r.action!=='n/a' ? r.action : (r.bucket==='content' ? 'Editorial — no product action needed.' : '—')}</td>
+    </tr>`;
+  }).join('');
+
+  document.querySelectorAll('.status-select').forEach(sel=>{
+    sel.addEventListener('change', async (e)=>{
+      const theme = decodeURIComponent(e.target.getAttribute('data-theme'));
+      backlogStatus[theme] = {status: e.target.value, updatedAt: todayIso()};
+      await saveBacklogStatus();
+    });
+  });
+}
+
+/* ---------- EXPLORER ---------- */
+const searchBox = document.getElementById('searchBox');
+const roleFilter = document.getElementById('roleFilter');
+const bucketFilter = document.getElementById('bucketFilter');
+const cardContainer = document.getElementById('cardContainer');
+const resultCount = document.getElementById('resultCount');
+const loadMoreBtn = document.getElementById('loadMoreBtn');
+
+function renderExplorer(){
+  const sec = document.getElementById('explorerSection');
+  if(!currentGroups.length){ sec.style.display='none'; return; }
+  sec.style.display = 'block';
+  applyExplorerFilters();
+}
+function applyExplorerFilters(){
+  const q = searchBox.value.trim().toLowerCase();
+  const r = roleFilter.value, b = bucketFilter.value;
+  filteredCards = currentGroups.filter(g=>{
+    if(r && g.role!==r) return false;
+    if(b && g.classification.bucket!==b) return false;
+    if(q && !g.text.toLowerCase().includes(q)) return false;
+    return true;
+  }).sort((a,b2)=>b2.count-a.count);
+  cardsShown = 0;
+  cardContainer.innerHTML='';
+  resultCount.textContent = fmt(filteredCards.length) + ' matching comment patterns';
+  renderMoreCards();
+}
+function renderMoreCards(){
+  const roleNames = {au:'Author', ed:'Editor', mc:'Mastercopier', other:'Other'};
+  const next = filteredCards.slice(cardsShown, cardsShown+CARD_PAGE);
+  cardContainer.insertAdjacentHTML('beforeend', next.map(g=>`
+    <div class="comment-card ${g.role}">
+      <div class="cc-meta">
+        <span class="jid">${g.role==='mc'?'Mastercopier':(roleNames[g.role]||g.role)}</span> ·
+        <span class="badge ${g.classification.bucket}">${g.classification.bucket}</span> ·
+        ${g.classification.theme} · ×${g.count}${g.articles && g.articles.size ? ' across '+g.articles.size+' article(s)' : ''}
+      </div>
+      <div class="cc-text">${g.text.replace(/</g,'&lt;')}</div>
+    </div>
+  `).join(''));
+  cardsShown += next.length;
+  loadMoreBtn.style.display = cardsShown>=filteredCards.length ? 'none' : 'block';
+}
+[searchBox, roleFilter, bucketFilter].forEach(el=>el.addEventListener('input', applyExplorerFilters));
+loadMoreBtn.addEventListener('click', renderMoreCards);
+
+/* ---------- RESET ---------- */
+document.getElementById('resetBtn').addEventListener('click', async ()=>{
+  if(!confirm('This clears all cached classifications, snapshots, and backlog statuses stored for this tool. Continue?')) return;
+  try{
+    const listRes = await window.storage.list('snapshot:', false);
+    const keys = (listRes && listRes.keys) || [];
+    for(const k of keys){ await window.storage.delete(k, false); }
+    await window.storage.delete('classification-cache', false);
+    await window.storage.delete('backlog-status', false);
+  }catch(e){ /* some keys may not exist */ }
+  location.reload();
+});
+
+/* ============================== INIT ============================== */
+async function init(){
+  await Promise.all([loadCache(), loadBacklogStatus(), loadSnapshots()]);
+  if(snapshots.length){
+    renderAll();
+    document.getElementById('emptyState').style.display = 'none';
+  }
+}
+init();
+</script>
+</body>
+</html>
