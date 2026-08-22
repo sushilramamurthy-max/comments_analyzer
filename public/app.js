@@ -137,11 +137,16 @@ async function init(){
 function renderAll(){
   const latest = snapshots[snapshots.length-1];
   if(!latest) return;
-  renderOverview();
-  renderAuthorEditor(latest);
-  renderMastercopier(latest);
-  renderBacklog();
-  renderExplorer();
+  const renderers = [
+    ()=>renderOverview(),
+    ()=>renderAuthorEditor(latest),
+    ()=>renderMastercopier(latest),
+    ()=>renderBacklog(),
+    ()=>renderExplorer(),
+  ];
+  renderers.forEach(fn=>{
+    try{ fn(); }catch(e){ console.error('Render step failed:', e); }
+  });
 }
 
 /* ============================== OVERVIEW ============================== */
@@ -177,6 +182,7 @@ function renderOverview(){
 
 let trendChartInstance = null;
 function renderTrendChart(){
+  if(typeof Chart === 'undefined'){ console.error('Chart.js failed to load — skipping trend chart.'); return; }
   const labels = snapshots.map(s=>shortDate(s.date));
   const totals = snapshots.map(s=>s.total);
   const products = snapshots.map(s=>s.bucket_counts.product||0);
@@ -184,14 +190,14 @@ function renderTrendChart(){
   trendChartInstance = new Chart(document.getElementById('trendChart'), {
     type:'line',
     data:{labels, datasets:[
-      {label:'Total comments', data:totals, borderColor:'#7f9ec9', backgroundColor:'rgba(127,158,201,.08)', tension:.3, fill:true},
-      {label:'Product-related', data:products, borderColor:'#c69a4e', backgroundColor:'rgba(198,154,78,.12)', tension:.3, fill:true},
+      {label:'Total comments', data:totals, borderColor:'#0071e3', backgroundColor:'rgba(0,113,227,.08)', tension:.3, fill:true},
+      {label:'Product-related', data:products, borderColor:'#ff9f0a', backgroundColor:'rgba(255,159,10,.12)', tension:.3, fill:true},
     ]},
     options:{
-      plugins:{legend:{position:'bottom', labels:{color:'#aab4bd', font:{size:10}, boxWidth:10}}},
+      plugins:{legend:{position:'bottom', labels:{color:'#6e6e73', font:{size:11}, boxWidth:10}}},
       scales:{
-        x:{ticks:{color:'#6f7c88', font:{size:10}}, grid:{color:'#1d2732'}},
-        y:{ticks:{color:'#6f7c88', font:{size:10}}, grid:{color:'#1d2732'}, beginAtZero:true}
+        x:{ticks:{color:'#86868b', font:{size:11}}, grid:{color:'#eeeef0'}},
+        y:{ticks:{color:'#86868b', font:{size:11}}, grid:{color:'#eeeef0'}, beginAtZero:true}
       }
     }
   });
