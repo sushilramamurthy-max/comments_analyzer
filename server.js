@@ -20,6 +20,7 @@ app.get('/api/state', (req, res) => {
   res.json({
     snapshots: store.getSnapshots(),
     backlogStatus: store.getBacklogStatus(),
+    latestGroups: store.getLatestGroups(),
     hasApiKey: hasApiKey(),
     model: MODEL,
     cachedPatterns: Object.keys(cache).length
@@ -78,7 +79,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     const newCount = groups.filter(g => !cache[g.hashKey]).length;
 
     if (newCount > 0) {
-      send({ type: 'status', message: hasApiKey() ? 'Classifying new patterns with Claude…' : 'No ANTHROPIC_API_KEY set — using the built-in fallback classifier (rougher results).' });
+      send({ type: 'status', message: hasApiKey() ? 'Classifying new patterns with Claude…' : 'No API key set — classifying with built-in rules instead (instant, less nuanced than AI).' });
     } else {
       send({ type: 'status', message: 'Every pattern already classified from a previous upload — nothing new to send to the model.' });
     }
@@ -94,7 +95,8 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     store.addSnapshot(snapshot);
 
     // Also return the classified groups so the client can populate the
-    // per-upload explorer without a second request.
+    // per-upload explorer without a second request, and persist them so
+    // the Explorer still works after a page refresh, not just this session.
     const explorerGroups = groups.map(g => ({
       role: g.role,
       category: g.category,
@@ -103,6 +105,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
       articleCount: g.articleCount,
       classification: cache[g.hashKey] || { theme: 'Unclassified', bucket: 'unclassified', owner: 'none', action: '', sentiment: 'neutral', severity: 0 }
     }));
+    store.saveLatestGroups(explorerGroups);
 
     send({ type: 'done', snapshot, groups: explorerGroups });
     res.end();

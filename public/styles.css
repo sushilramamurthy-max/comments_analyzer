@@ -197,7 +197,13 @@ table.backlog tr:hover td{background:rgba(0,0,0,.015);}
 select.status-select{background:var(--ink-900);border:1px solid var(--ink-600);color:var(--paper);font-family:var(--font);
   font-size:11.5px;padding:5px 8px;border-radius:7px;outline:none;font-weight:500;}
 select.status-select:focus{border-color:var(--blue);}
-.backlog-filters{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;}
+.still-recurring{font-size:9.5px;color:#c8352b;margin-top:4px;font-weight:500;}
+.backlog-filters{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;align-items:center;}
+.export-btn{
+  margin-left:auto;background:var(--ink-800);border:1px solid var(--ink-600);color:var(--paper-dim);
+  font-family:var(--font);font-size:12.5px;font-weight:500;padding:8px 14px;border-radius:9px;cursor:pointer;
+}
+.export-btn:hover{border-color:var(--blue);color:var(--blue);}
 .backlog-filters select{background:var(--ink-800);border:1px solid var(--ink-600);color:var(--paper);font-family:var(--font);
   font-size:12.5px;padding:8px 12px;border-radius:9px;}
 

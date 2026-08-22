@@ -4,6 +4,7 @@ let backlogStatus = {};
 let currentGroups = [];
 let filteredCards = [];
 let cardsShown = 0;
+let hasApiKey = false;
 const CARD_PAGE = 30;
 
 /* ============================== UTIL ============================== */
@@ -120,12 +121,14 @@ async function init(){
     const state = await resp.json();
     snapshots = state.snapshots || [];
     backlogStatus = state.backlogStatus || {};
+    currentGroups = state.latestGroups || [];
+    hasApiKey = !!state.hasApiKey;
     const flag = document.getElementById('modeFlag');
     if(state.hasApiKey){
       flag.textContent = 'Live classifier: ' + state.model;
       flag.classList.add('live');
     } else {
-      flag.textContent = 'Demo mode — no API key set (see README)';
+      flag.textContent = 'Built-in rules (no API key)';
     }
   }catch(e){
     document.getElementById('modeFlag').textContent = 'Could not reach server';
@@ -244,7 +247,7 @@ function renderAuthorEditor(latest){
   const sTot = Math.max(1, sc.positive+sc.neutral+sc.negative);
   document.getElementById('auedSentimentPanel').innerHTML = `
     <h4>Tone</h4>
-    <div class="sub">How authors &amp; editors sound when they write these — a secondary, earlier-warning signal</div>
+    <div class="sub">${hasApiKey ? 'How authors &amp; editors sound — an early warning, ahead of the volume itself' : 'Needs an API key to detect — everything reads neutral without one'}</div>
     <div class="bucket-split">
       <div style="width:${100*sc.positive/sTot}%;background:var(--sage)"></div>
       <div style="width:${100*sc.neutral/sTot}%;background:var(--paper-faint)"></div>
@@ -297,7 +300,7 @@ function renderMastercopier(latest){
 
   document.getElementById('mcReadinessSection').style.display = mcTotal ? 'block' : 'none';
   document.getElementById('readinessPct').textContent = readinessPct + '%';
-  document.getElementById('readinessGapText').textContent = fmt(gap) + ' comments';
+  document.getElementById('readinessGapText').textContent = fmt(gap);
   document.getElementById('readinessMeter').style.width = readinessPct + '%';
 
   document.getElementById('mcCategorySection').style.display = mcTotal ? 'block' : 'none';
@@ -328,6 +331,7 @@ function renderMastercopier(latest){
 }
 
 /* ============================== BACKLOG ============================== */
+let lastBacklogRows = [];
 function renderBacklog(){
   document.getElementById('backlogEmpty').style.display = 'none';
   document.getElementById('backlogSection').style.display = 'block';
@@ -362,14 +366,18 @@ function renderBacklog(){
   }).sort((a,b)=>b.priority-a.priority);
 
   const maxHist = Math.max(1, ...rows.flatMap(r=>r.history));
+  lastBacklogRows = rows; // for CSV export
   document.getElementById('backlogBody').innerHTML = rows.map(r=>{
     const status = (backlogStatus[r.name] && backlogStatus[r.name].status) || 'New';
     let deltaCell = '<span class="delta-cell flat">—</span>';
+    let wentUp = false;
     if(r.prevCount!==null){
       const diff = r.count - r.prevCount;
+      wentUp = diff > 0;
       if(diff===0) deltaCell = '<span class="delta-cell flat">flat</span>';
       else { const cls = diff<0?'down':'up'; const arrow = diff<0?'▼':'▲'; deltaCell = `<span class="delta-cell ${cls}">${arrow}${Math.abs(diff)}</span>`; }
     }
+    const stillRecurring = status === 'Shipped' && wentUp;
     const sparkBars = r.history.slice(-8).map((v,i,arr)=>{
       const h = Math.max(2, Math.round(20*v/maxHist));
       const isLast = i===arr.length-1;
@@ -384,9 +392,12 @@ function renderBacklog(){
       <td>${fmt(r.count)}</td>
       <td>${deltaCell}</td>
       <td><div class="spark">${sparkBars}</div></td>
-      <td><select class="status-select" data-theme="${encodeURIComponent(r.name)}">
-        ${['New','Investigating','Planned','Shipped'].map(s=>`<option value="${s}" ${s===status?'selected':''}>${s}</option>`).join('')}
-      </select></td>
+      <td>
+        <select class="status-select" data-theme="${encodeURIComponent(r.name)}">
+          ${['New','Investigating','Planned','Shipped'].map(s=>`<option value="${s}" ${s===status?'selected':''}>${s}</option>`).join('')}
+        </select>
+        ${stillRecurring ? '<div class="still-recurring">Shipped, but still climbing</div>' : ''}
+      </td>
       <td class="b-action">${r.action && r.action!=='n/a' ? r.action : (r.bucket==='content' ? 'Editorial — no product action needed.' : '—')}</td>
     </tr>`;
   }).join('');
@@ -406,6 +417,31 @@ function renderBacklog(){
 }
 ['backlogSourceFilter','backlogBucketFilter','backlogOwnerFilter'].forEach(id=>{
   document.getElementById(id).addEventListener('change', ()=>{ if(snapshots.length) renderBacklog(); });
+});
+
+function csvCell(v){
+  const s = String(v==null?'':v);
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+}
+document.getElementById('exportBacklogBtn').addEventListener('click', ()=>{
+  if(!lastBacklogRows.length) return;
+  const header = ['Theme','Source','Bucket','Owner','Latest count','Change vs last upload','Status','Suggested action'];
+  const ownerLabel = {engineering:'Engineering', design:'Design', customer_success:'Customer Success', none:''};
+  const lines = [header.map(csvCell).join(',')];
+  lastBacklogRows.forEach(r=>{
+    const status = (backlogStatus[r.name] && backlogStatus[r.name].status) || 'New';
+    const delta = r.prevCount===null ? '' : (r.count-r.prevCount);
+    lines.push([
+      r.name, r.source==='aued'?'Author/Editor':'Mastercopier', r.bucket, ownerLabel[r.owner]||'',
+      r.count, delta, status, (r.action && r.action!=='n/a') ? r.action : ''
+    ].map(csvCell).join(','));
+  });
+  const blob = new Blob([lines.join('\n')], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'comment-ledger-backlog-' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(url);
 });
 
 /* ============================== EXPLORER ============================== */
