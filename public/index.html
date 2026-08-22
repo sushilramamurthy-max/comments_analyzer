@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Comment Ledger — Insights engine for proof comments</title>
+<link rel="stylesheet" href="/styles.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand"><span class="mark">⎘</span> Comment Ledger</div>
+    <nav class="nav">
+      <button data-page="overview" class="active">Overview</button>
+      <button data-page="authored">Author &amp; Editor</button>
+      <button data-page="mastercopier">Mastercopier</button>
+      <button data-page="backlog">Backlog</button>
+      <button data-page="explorer">Explorer</button>
+    </nav>
+    <div class="topbar-right">
+      <span class="mode-flag" id="modeFlag">checking classifier…</span>
+      <button class="upload-btn" id="openUploadBtn">Upload comments</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================== UPLOAD MODAL ============================== -->
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal">
+    <button class="modal-close" id="closeModalBtn">✕</button>
+    <h3>Upload a comments export</h3>
+    <p class="lead">Any CSV with columns like <code>jid, aid, role_code, category, comment_text</code> works — headers are matched flexibly. Upload as often as you like: daily, weekly, or monthly. Comments already seen before are recognized instantly from cache; only new ones are sent to the classifier.</p>
+    <div class="dropzone" id="dropzone">
+      <div class="dz-icon">⎘</div>
+      <div class="dz-main">Drop a CSV here, or click to choose a file</div>
+      <div class="dz-sub">One file per upload · a new snapshot is saved automatically</div>
+      <input type="file" id="fileInput" accept=".csv">
+    </div>
+    <div class="status-line" id="statusLine" style="display:none;"><span class="dot"></span><span id="statusText"></span></div>
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-label" id="progressLabel"></div>
+    </div>
+    <div class="banner" id="errorBanner"></div>
+  </div>
+</div>
+
+<!-- ============================== OVERVIEW ============================== -->
+<div class="page active" id="page-overview">
+  <div class="wrap">
+    <header class="hero">
+      <div class="eyebrow">What this tool does</div>
+      <h1>Every proof comment is someone doing <em>by hand</em> what the product should do for them.</h1>
+      <p class="dek">Upload a comment export and this tool sorts every comment into two piles: <b>product</b> — something the tool doesn't yet let that person do themselves — and <b>content</b> — a genuine editorial correction no tool could remove. Product comments get a concrete suggested fix and an owner. Upload again next week or next month, and you'll see whether the count actually goes down.</p>
+    </header>
+
+    <section id="northstarSection" style="display:none;">
+      <div class="section-label">This upload vs. the last one</div>
+      <div class="section-title">The number you're trying to shrink</div>
+      <p class="section-note">"Product-related comments" is the headline metric — every one of these is a comment that shouldn't have needed to exist if the tool did more. Watch it fall as you ship fixes.</p>
+      <div class="northstar" id="northstarRow"></div>
+    </section>
+
+    <section id="trendSection" style="display:none;">
+      <div class="section-label">Over time</div>
+      <div class="section-title">Comment volume across every upload</div>
+      <p class="section-note">Each upload you run adds a point here. The blue line is total comment volume; the gold line is the product-related slice you're accountable for reducing.</p>
+      <div class="panel"><div class="chart-box"><canvas id="trendChart"></canvas></div></div>
+    </section>
+
+    <section id="overviewEmpty">
+      <div class="empty-box">
+        <div class="empty-note">No comments analyzed yet. Click <b>Upload comments</b> above to run your first snapshot. Once you have one, this page — and the Author &amp; Editor and Mastercopier pages — will fill in and stay here for next time.</div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<!-- ============================== AUTHOR & EDITOR ============================== -->
+<div class="page" id="page-authored">
+  <div class="wrap">
+    <header class="hero">
+      <div class="eyebrow">Author &amp; editor insights</div>
+      <h1>What authors and editors are telling you — turned into <em>who should fix it</em>.</h1>
+      <p class="dek">Author and editor comments happen at the very start of the workflow, before anything reaches production. Each one either flags something the product can't yet do — a <b>product</b> comment — or is a normal editorial note about the manuscript itself — a <b>content</b> comment. This page exists to close the loop: comment in, insight out, owner assigned, count goes down.</p>
+    </header>
+
+    <section id="auedLoopSection">
+      <div class="section-label">The feedback loop</div>
+      <div class="section-title">How a comment becomes a fix</div>
+      <div class="loop">
+        <div class="loop-step"><div class="step-n">1 · Comment</div><div class="step-t">Author or editor leaves a note on the proof</div><div class="step-d">Usually because they hit a wall — something they wanted to do themselves but couldn't.</div></div>
+        <div class="loop-arrow">→</div>
+        <div class="loop-step"><div class="step-n">2 · Classify</div><div class="step-t">We sort it: product gap, or genuine content note</div><div class="step-d">Only product-bucket comments represent something worth building.</div></div>
+        <div class="loop-arrow">→</div>
+        <div class="loop-step"><div class="step-n">3 · Route</div><div class="step-t">Assigned an owner: Engineering, Design, or Customer Success</div><div class="step-d">Some fixes are automation, some are UI, some just need better author guidance.</div></div>
+        <div class="loop-arrow">→</div>
+        <div class="loop-step"><div class="step-n">4 · Track</div><div class="step-t">You prioritize, ship, and re-upload</div><div class="step-d">The Backlog page tracks status. This page's charts tell you if it's working.</div></div>
+      </div>
+    </section>
+
+    <section id="auedBucketSection" style="display:none;">
+      <div class="section-label">This upload</div>
+      <div class="section-title">Product gap vs. genuine content note</div>
+      <p class="section-note">If most author/editor comments are "content", the product is in decent shape — people are mostly writing about their manuscript, not fighting the tool. A high "product" share is your signal to invest here.</p>
+      <div class="grid2">
+        <div class="panel" id="auedBucketPanel"></div>
+        <div class="panel" id="auedSentimentPanel"></div>
+      </div>
+    </section>
+
+    <section id="auedOwnerSection" style="display:none;">
+      <div class="section-label">Prioritized by owner</div>
+      <div class="section-title">What each team should look at first</div>
+      <p class="section-note">Grouped by who can actually fix it. Each item shows how many comments it's causing and a plain-language suggested fix. Use the Backlog page to track status once you've picked what to work on.</p>
+      <div class="grid3">
+        <div class="panel owner-col engineering">
+          <h5>Engineering</h5>
+          <div class="owner-desc">Backend logic, automation, validation — things that don't need a new screen, just a rule.</div>
+          <div id="ownerEngineering"></div>
+        </div>
+        <div class="panel owner-col design">
+          <h5>Design</h5>
+          <div class="owner-desc">A new or better interface — an editor, an upload flow, an inline control.</div>
+          <div id="ownerDesign"></div>
+        </div>
+        <div class="panel owner-col customer_success">
+          <h5>Customer Success</h5>
+          <div class="owner-desc">Not a build at all — better guidance, templates, or submission instructions.</div>
+          <div id="ownerCustomerSuccess"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="auedContentSection" style="display:none;">
+      <div class="section-label">For awareness only</div>
+      <div class="section-title">Top content / editorial themes</div>
+      <p class="section-note">These are not product problems — no fix will remove them, since they're genuine corrections to the manuscript. Listed here only so volume doesn't look mysterious.</p>
+      <div class="panel" id="auedContentPanel"></div>
+    </section>
+
+    <section id="auedEmpty">
+      <div class="empty-box"><div class="empty-note">Upload a comment export to see author &amp; editor insights here.</div></div>
+    </section>
+  </div>
+</div>
+
+<!-- ============================== MASTERCOPIER ============================== -->
+<div class="page" id="page-mastercopier">
+  <div class="wrap">
+    <header class="hero">
+      <div class="eyebrow">Mastercopier insights</div>
+      <h1>Mastercopiers should only ever leave a <em>layout</em> comment.</h1>
+      <p class="dek">Every mastercopier comment is production staff typing an instruction because the product won't let them just do it themselves. Their comments already come tagged with a category — <b>XML</b>, <b>Graphics</b>, <b>Layout</b>, or <b>Text</b>. Layout is the one category that will always need a human judgment call. XML, Graphics, and Text shouldn't need a comment at all — they should be something a mastercopier finishes with a click, in the tool, without ever leaving a note for someone else to act on.</p>
+    </header>
+
+    <section id="mcReadinessSection" style="display:none;">
+      <div class="section-label">The headline metric</div>
+      <div class="section-title">Self-service readiness</div>
+      <p class="section-note">The share of mastercopier comments that are Layout — the only category expected to remain manual. Everything else in this upload is a comment that shouldn't have needed to exist.</p>
+      <div class="panel">
+        <div class="readiness">
+          <span class="big" id="readinessPct">–</span>
+          <span class="lab">of mastercopier comments are Layout (the expected floor). The rest — <span id="readinessGapText">–</span> — are candidates to eliminate by building self-service tools.</span>
+        </div>
+        <div class="meter-track"><div class="meter-fill" id="readinessMeter" style="width:0%"></div></div>
+      </div>
+    </section>
+
+    <section id="mcCategorySection" style="display:none;">
+      <div class="section-label">By category</div>
+      <div class="section-title">What needs to be built, category by category</div>
+      <p class="section-note">Red-flagged categories should trend toward zero — each one lists the top reasons mastercopiers are still typing comments instead of clicking a button, with a suggested fix. The green Layout card is expected to stay non-zero; it's shown for visibility, not as a problem to solve.</p>
+      <div class="grid4" id="mcCategoryGrid"></div>
+    </section>
+
+    <section id="mcEmpty">
+      <div class="empty-box"><div class="empty-note">Upload a comment export to see the mastercopier self-service scorecard here.</div></div>
+    </section>
+  </div>
+</div>
+
+<!-- ============================== BACKLOG ============================== -->
+<div class="page" id="page-backlog">
+  <div class="wrap">
+    <header class="hero">
+      <div class="eyebrow">Combined backlog</div>
+      <h1>Every theme, ranked, with a status you control.</h1>
+      <p class="dek">One prioritized list across both author/editor and mastercopier comments — ranked by volume × severity. Set a status as you work through it. The trend column shows whether a theme is actually shrinking after something ships.</p>
+    </header>
+    <section id="backlogSection" style="display:none;">
+      <div class="backlog-filters">
+        <select id="backlogSourceFilter"><option value="">All sources</option><option value="aued">Author &amp; Editor</option><option value="mc">Mastercopier</option></select>
+        <select id="backlogBucketFilter"><option value="">All buckets</option><option value="product">Product</option><option value="content">Content</option></select>
+        <select id="backlogOwnerFilter"><option value="">All owners</option><option value="engineering">Engineering</option><option value="design">Design</option><option value="customer_success">Customer Success</option></select>
+      </div>
+      <div class="panel">
+        <table class="backlog">
+          <thead><tr><th>Theme</th><th>Source</th><th>Bucket</th><th>Owner</th><th>Latest</th><th>Δ</th><th>Trend</th><th>Status</th><th>Suggested action</th></tr></thead>
+          <tbody id="backlogBody"></tbody>
+        </table>
+      </div>
+    </section>
+    <section id="backlogEmpty">
+      <div class="empty-box"><div class="empty-note">Upload a comment export to build the backlog.</div></div>
+    </section>
+  </div>
+</div>
+
+<!-- ============================== EXPLORER ============================== -->
+<div class="page" id="page-explorer">
+  <div class="wrap">
+    <header class="hero">
+      <div class="eyebrow">Raw data</div>
+      <h1>Browse this upload's comments directly.</h1>
+      <p class="dek">Every comment pattern from your most recent upload, with its classification. Useful for spot-checking whether the classifier got something right — or for finding the exact wording behind a backlog theme.</p>
+    </header>
+    <section id="explorerSection" style="display:none;">
+      <div class="explorer-controls">
+        <input type="text" id="searchBox" placeholder="Search comment text…">
+        <select id="roleFilter"><option value="">All roles</option><option value="au">Author</option><option value="ed">Editor</option><option value="mc">Mastercopier</option></select>
+        <select id="bucketFilter"><option value="">All buckets</option><option value="product">Product</option><option value="content">Content</option><option value="unclassified">Unclassified</option></select>
+      </div>
+      <div class="result-count" id="resultCount"></div>
+      <div id="cardContainer"></div>
+      <button class="load-more" id="loadMoreBtn">Show more ↓</button>
+    </section>
+    <section id="explorerEmpty">
+      <div class="empty-box"><div class="empty-note">Upload a comment export in this session to browse its comments here. (This view only shows the most recent upload — it isn't stored between visits.)</div></div>
+    </section>
+  </div>
+</div>
+
+<footer>
+  <div class="wrap">
+    <p><b>How this works.</b> Comments are grouped by normalized text (numbers collapsed) plus role, so the same instruction recurring across articles is classified once and cached. Classification runs via Claude, capped at 300 new patterns per upload for speed — anything beyond that is counted in totals as "unclassified / long tail" and gets picked up automatically on a future upload if it keeps recurring. Data is stored on this app's server, not shared externally. <button class="reset" id="resetBtn">Reset all stored data</button></p>
+  </div>
+</footer>
+
+<script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+{
+  "name": "comment-ledger",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Insights engine that turns author/editor and mastercopier proof comments into a prioritized, trackable product backlog.",
+  "main": "server.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "multer": "^2.0.1",
+    "papaparse": "^5.4.1"
+  }
+}
