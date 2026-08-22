@@ -11,8 +11,14 @@ services:
       - key: CLAUDE_MODEL
         value: claude-sonnet-5
       - key: DATA_DIR
-        value: /var/data
-    disk:
-      name: comment-ledger-data
-      mountPath: /var/data
-      sizeGB: 1
+        value: ./data
+
+# Free tier does not support attached disks, so this blueprint deploys
+# without one — snapshot history will reset on every redeploy/restart.
+#
+# To keep history permanently: upgrade the service to a paid instance type
+# in the Render dashboard, then add a disk manually (Render → your service
+# → Disks → Add Disk, mount path e.g. /var/data), and set the DATA_DIR
+# environment variable to that same mount path. Render does not currently
+# support declaring paid-tier disks inside render.yaml blueprints, so this
+# step has to be done once by hand after the first deploy.

@@ -46,9 +46,11 @@ only file that touches the filesystem — swap it for a real database later
 without touching anything else.
 
 **Important:** on most hosts, a plain filesystem write does **not** survive a
-redeploy or container restart unless you attach a persistent disk (see the
-Render section below). Fine for trying it out; attach a disk before relying
-on the history for real.
+redeploy or container restart unless you attach a persistent disk. Render's
+free tier doesn't support disks at all, so on free tier treat this app as
+stateful *within* a running instance but not across deploys — fine for
+trying it out and for uploads within the same day, but attach a disk (paid
+tier — see the deploy section below) before relying on long-term history.
 
 ## 3. Push this to your own GitHub repo
 
@@ -68,18 +70,25 @@ git push -u origin main
 In the Render dashboard, choose **New → Blueprint**, point it at your GitHub
 repo, and Render will create the web service from the file automatically.
 You'll be prompted to fill in the `ANTHROPIC_API_KEY` secret (it's marked
-`sync: false` in the blueprint so it's never committed to git).
+`sync: false` in the blueprint so it's never committed to git). This deploys
+on the **free** tier with no attached disk — see the note below on what
+that means for history.
 
 **Option B — Manual:**
 1. **New → Web Service**, connect your GitHub repo.
 2. Build command: `npm install`. Start command: `node server.js`.
 3. Add an environment variable `ANTHROPIC_API_KEY` with your key
    (get one at https://console.anthropic.com).
-4. To keep snapshot history across deploys, add a **persistent disk**
-   (Render → your service → Disks) mounted at e.g. `/var/data`, and set
-   the `DATA_DIR` environment variable to that same path. Persistent disks
-   require a paid instance type, not the free tier — on the free tier the
-   app works fine but forgets its history on every redeploy/restart.
+
+**Keeping snapshot history across deploys (optional):** Render's free tier
+does not support attached disks at all — trying to add one (including via
+`render.yaml`) will fail to deploy, which is the error you'll hit if you
+keep the `disk:` block from an earlier version of this file. To persist
+history permanently: upgrade the service to a paid instance type in the
+Render dashboard, then go to your service → **Disks** → **Add Disk**
+(e.g. mount path `/var/data`), and set the `DATA_DIR` environment variable
+to that same path. Until then, the app works fine but its snapshot history
+resets on every redeploy or restart.
 
 Once deployed, Render gives you a public `https://<your-service>.onrender.com`
 URL — that's the live app.
