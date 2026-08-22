@@ -16,8 +16,8 @@
       <button data-page="overview" class="active">Overview</button>
       <button data-page="authored">Author &amp; Editor</button>
       <button data-page="mastercopier">Mastercopier</button>
-      <button data-page="backlog">Backlog</button>
-      <button data-page="explorer">Explorer</button>
+      <button data-page="backlog">Actions</button>
+      <button data-page="explorer">Data</button>
     </nav>
     <div class="topbar-right">
       <span class="mode-flag" id="modeFlag">checking classifier…</span>
@@ -56,18 +56,56 @@
       <p class="dek">Upload your comments. We'll sort what's a real product gap from what's just an edit, tell you who should fix it, and show you if it's working.</p>
     </header>
 
+    <section id="pipelineSection">
+      <div class="section-label">How it works</div>
+      <div class="section-title">Data → Insights → Actions</div>
+      <div class="loop">
+        <div class="loop-step"><div class="step-n">1 · Data</div><div class="step-t">What you upload</div><div class="step-d">Every comment, as-is. Browse it anytime on the Data page.</div></div>
+        <div class="loop-arrow">→</div>
+        <div class="loop-step"><div class="step-n">2 · Insights</div><div class="step-t">What the data means</div><div class="step-d">Sorted by theme, bucket, and who it's costing — Author &amp; Editor and Mastercopier pages.</div></div>
+        <div class="loop-arrow">→</div>
+        <div class="loop-step"><div class="step-n">3 · Actions</div><div class="step-t">What to do about it</div><div class="step-d">A ranked, ownable list on the Actions page. Ship it, then upload again.</div></div>
+      </div>
+    </section>
+
+    <section id="rateSection" style="display:none;">
+      <div class="section-label">The two numbers that matter</div>
+      <div class="section-title">Both should fall as you ship fixes</div>
+      <p class="section-note">Raw counts go up and down with how many comments happen to be in a given upload. These two don't — they're rates, so they're comparable no matter how big or small the batch is.</p>
+      <div class="grid2">
+        <div class="panel">
+          <h4>Share of comments</h4>
+          <div class="sub">Product-related comments as a percent of everything in this upload</div>
+          <div class="rate-big" id="ratePctProduct">–</div>
+          <div id="ratePctProductDelta"></div>
+        </div>
+        <div class="panel">
+          <h4>Share of articles</h4>
+          <div class="sub">Articles that needed at least one product-related comment</div>
+          <div class="rate-big" id="ratePctArticles">–</div>
+          <div id="ratePctArticlesDelta"></div>
+        </div>
+      </div>
+    </section>
+
     <section id="northstarSection" style="display:none;">
       <div class="section-label">Vs. last upload</div>
-      <div class="section-title">The number to watch</div>
-      <p class="section-note">Product comments should go down every time you ship something. This is how you'll know.</p>
+      <div class="section-title">Raw counts, for reference</div>
       <div class="northstar" id="northstarRow"></div>
     </section>
 
     <section id="trendSection" style="display:none;">
       <div class="section-label">Over time</div>
       <div class="section-title">Progress</div>
-      <p class="section-note">One point per upload. Blue is everything. Orange is what you need to fix.</p>
+      <p class="section-note">One point per upload. Blue is total comments. Orange is product-related — the one to watch.</p>
       <div class="panel"><div class="chart-box"><canvas id="trendChart"></canvas></div></div>
+    </section>
+
+    <section id="rateTrendSection" style="display:none;">
+      <div class="section-label">Over time</div>
+      <div class="section-title">The two rates, over time</div>
+      <p class="section-note">This is the chart that answers "is it working?" Both lines trending down is the goal.</p>
+      <div class="panel"><div class="chart-box"><canvas id="rateTrendChart"></canvas></div></div>
     </section>
 
     <section id="overviewEmpty">
@@ -186,9 +224,9 @@
 <div class="page" id="page-backlog">
   <div class="wrap">
     <header class="hero">
-      <div class="eyebrow">Backlog</div>
-      <h1>Everything, ranked.</h1>
-      <p class="dek">One list, both sources. Set a status. Watch the trend column after you ship.</p>
+      <div class="eyebrow">Actions</div>
+      <h1>Every insight, turned into a job.</h1>
+      <p class="dek">This is the third step: Data → Insights → <b>Actions</b>. One ranked list, both sources. Set a status. Watch the trend column after you ship.</p>
     </header>
     <section id="backlogSection" style="display:none;">
       <div class="backlog-filters">
@@ -214,9 +252,9 @@
 <div class="page" id="page-explorer">
   <div class="wrap">
     <header class="hero">
-      <div class="eyebrow">Raw data</div>
-      <h1>See the actual comments.</h1>
-      <p class="dek">Every pattern behind every number, so you can check our work.</p>
+      <div class="eyebrow">Data</div>
+      <h1>Where it all starts.</h1>
+      <p class="dek">Step one: Data → Insights → Actions. Every comment pattern from your upload, with its classification — so you can check our work.</p>
     </header>
     <section id="explorerSection" style="display:none;">
       <div class="explorer-controls">
@@ -236,7 +274,7 @@
 
 <footer>
   <div class="wrap">
-    <p>Comments are grouped so the same instruction is only classified once. With an API key, new patterns are classified by Claude; without one, by the built-in rules. Nothing is shared outside this app. <button class="reset" id="resetBtn">Reset all data</button></p>
+    <p>Comments are grouped so the same instruction is only classified once. Classification runs on built-in rules today; connecting your own Claude API key for AI-assisted classification is coming soon. Nothing is shared outside this app. <button class="reset" id="resetBtn">Reset all data</button></p>
   </div>
 </footer>
 

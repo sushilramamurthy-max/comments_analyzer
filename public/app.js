@@ -125,10 +125,10 @@ async function init(){
     hasApiKey = !!state.hasApiKey;
     const flag = document.getElementById('modeFlag');
     if(state.hasApiKey){
-      flag.textContent = 'Live classifier: ' + state.model;
+      flag.textContent = 'Live AI classifier: ' + state.model;
       flag.classList.add('live');
     } else {
-      flag.textContent = 'Built-in rules (no API key)';
+      flag.textContent = 'Rules engine active · AI classification coming soon';
     }
   }catch(e){
     document.getElementById('modeFlag').textContent = 'Could not reach server';
@@ -153,8 +153,15 @@ function renderAll(){
 }
 
 /* ============================== OVERVIEW ============================== */
-function deltaHtml(cur, prevVal){
+function deltaHtml(cur, prevVal, asPoints){
   if(prevVal===null || prevVal===undefined) return '<span class="delta flat">first snapshot</span>';
+  if(asPoints){
+    const diff = Math.round((cur-prevVal)*10)/10;
+    if(diff===0) return '<span class="delta flat">flat vs last upload</span>';
+    const cls = diff<0 ? 'down':'up';
+    const arrow = diff<0 ? '▼':'▲';
+    return `<span class="delta ${cls}">${arrow} ${Math.abs(diff)} pts vs last upload</span>`;
+  }
   if(prevVal===0) return '<span class="delta flat">—</span>';
   const diffPct = Math.round(100*(cur-prevVal)/prevVal);
   if(diffPct===0) return '<span class="delta flat">flat vs last upload</span>';
@@ -168,11 +175,19 @@ function renderOverview(){
   const latest = snapshots[snapshots.length-1];
   const prev = snapshots.length>1 ? snapshots[snapshots.length-2] : null;
 
+  // Rate KPIs — the headline metrics: percent of comments that are
+  // product-related, and percent of articles that needed at least one.
+  document.getElementById('rateSection').style.display = 'block';
+  document.getElementById('ratePctProduct').textContent = (latest.pct_product||0) + '%';
+  document.getElementById('ratePctArticles').textContent = (latest.pct_articles_with_product||0) + '%';
+  document.getElementById('ratePctProductDelta').innerHTML = deltaHtml(latest.pct_product||0, prev?(prev.pct_product||0):null, true);
+  document.getElementById('ratePctArticlesDelta').innerHTML = deltaHtml(latest.pct_articles_with_product||0, prev?(prev.pct_articles_with_product||0):null, true);
+
   document.getElementById('northstarSection').style.display = 'block';
   const stats = [
-    {n: fmt(latest.bucket_counts.product||0), l:'Product-related comments', h:'The number to shrink', delta: deltaHtml(latest.bucket_counts.product||0, prev?(prev.bucket_counts.product||0):null)},
+    {n: fmt(latest.bucket_counts.product||0), l:'Product-related comments', h:'', delta: deltaHtml(latest.bucket_counts.product||0, prev?(prev.bucket_counts.product||0):null)},
     {n: fmt(latest.total), l:'Total comments this upload', h:'', delta: deltaHtml(latest.total, prev?prev.total:null)},
-    {n: fmt(latest.bucket_counts.content||0), l:'Content / editorial comments', h:'Not a product issue', delta: deltaHtml(latest.bucket_counts.content||0, prev?(prev.bucket_counts.content||0):null)},
+    {n: fmt(latest.total_articles||0), l:'Articles in this upload', h:'', delta: deltaHtml(latest.total_articles||0, prev?(prev.total_articles||0):null)},
     {n: fmt(latest.long_tail||0), l:'Not yet classified', h:'Rare patterns, low priority', delta:''},
   ];
   document.getElementById('northstarRow').innerHTML = stats.map(s=>`
@@ -181,6 +196,8 @@ function renderOverview(){
 
   document.getElementById('trendSection').style.display = 'block';
   renderTrendChart();
+  document.getElementById('rateTrendSection').style.display = 'block';
+  renderRateTrendChart();
 }
 
 let trendChartInstance = null;
@@ -201,6 +218,29 @@ function renderTrendChart(){
       scales:{
         x:{ticks:{color:'#86868b', font:{size:11}}, grid:{color:'#eeeef0'}},
         y:{ticks:{color:'#86868b', font:{size:11}}, grid:{color:'#eeeef0'}, beginAtZero:true}
+      }
+    }
+  });
+}
+
+let rateTrendChartInstance = null;
+function renderRateTrendChart(){
+  if(typeof Chart === 'undefined') return;
+  const labels = snapshots.map(s=>shortDate(s.date));
+  const pctProduct = snapshots.map(s=>s.pct_product||0);
+  const pctArticles = snapshots.map(s=>s.pct_articles_with_product||0);
+  if(rateTrendChartInstance) rateTrendChartInstance.destroy();
+  rateTrendChartInstance = new Chart(document.getElementById('rateTrendChart'), {
+    type:'line',
+    data:{labels, datasets:[
+      {label:'% of comments (product)', data:pctProduct, borderColor:'#ff9f0a', backgroundColor:'rgba(255,159,10,.10)', tension:.3, fill:true},
+      {label:'% of articles (product)', data:pctArticles, borderColor:'#5e5ce6', backgroundColor:'rgba(94,92,230,.08)', tension:.3, fill:true},
+    ]},
+    options:{
+      plugins:{legend:{position:'bottom', labels:{color:'#6e6e73', font:{size:11}, boxWidth:10}}},
+      scales:{
+        x:{ticks:{color:'#86868b', font:{size:11}}, grid:{color:'#eeeef0'}},
+        y:{ticks:{color:'#86868b', font:{size:11}, callback:v=>v+'%'}, grid:{color:'#eeeef0'}, beginAtZero:true, max:100}
       }
     }
   });

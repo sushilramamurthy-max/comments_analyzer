@@ -102,7 +102,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
       category: g.category,
       text: g.text,
       count: g.count,
-      articleCount: g.articleCount,
+      articleCount: g.articles ? g.articles.size : 0,
       classification: cache[g.hashKey] || { theme: 'Unclassified', bucket: 'unclassified', owner: 'none', action: '', sentiment: 'neutral', severity: 0 }
     }));
     store.saveLatestGroups(explorerGroups);
